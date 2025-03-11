@@ -20,26 +20,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Install OWASP ZAP (If Not Installed)
+        run: |
+          sudo apt update
+          sudo apt install zaproxy -y
 
       - name: Create Directory for Reports
         run: mkdir -p zap_reports
 
-      - name: Run OWASP ZAP Scan on AWS Lightsail
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.LIGHTSAIL_SSH_KEY }}  # Add your private key as a GitHub Secret
+      - name: Run OWASP ZAP Scan
         run: |
-          echo "$SSH_PRIVATE_KEY" > lightsail_key.pem
-          chmod 600 lightsail_key.pem
-          ssh -o StrictHostKeyChecking=no -i lightsail_key.pem ubuntu@3.80.13.217 << 'EOF'
-            cd ~/ZAP_2.16.0/
-            ./zap.sh -cmd -quickurl "http://3.80.13.217/DVWA" -quickprogress -r ~/zap_reports/zap_scan_${{ github.run_id }}.html
-          EOF
-
-      - name: Copy ZAP Scan Report from AWS Lightsail
-        run: |
-          scp -o StrictHostKeyChecking=no -i lightsail_key.pem ubuntu@3.80.13.217:~/zap_reports/zap_scan_${{ github.run_id }}.html zap_reports/
+          zap.sh -cmd -quickurl "http://3.80.13.217/DVWA" -quickprogress -r zap_reports/zap_scan_${{ github.run_id }}.html
 
       - name: Upload ZAP HTML Report
         uses: actions/upload-artifact@v4  
