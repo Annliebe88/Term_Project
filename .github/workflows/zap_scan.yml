@@ -31,18 +31,24 @@ jobs:
       - name: Create Directory for Reports
         run: mkdir -p zap_reports
 
-      - name: Run OWASP ZAP Scan
+      - name: Generate Unique Report Name
         run: |
-          zap.sh -cmd -quickurl "http://3.80.13.217/DVWA" -quickprogress -r zap_reports/zap_scan_${{ github.run_id }}.html
+          INDEX=$(ls zap_reports | wc -l)
+          REPORT_NAME="zap_report_$((INDEX+1)).html"
+          echo "REPORT_NAME=$REPORT_NAME" >> $GITHUB_ENV
+
+      - name: Run OWASP ZAP Scan and Save as HTML
+        run: |
+          zap.sh -cmd -quickurl "http://3.80.13.217/DVWA" -quickprogress -r "zap_reports/${REPORT_NAME}"
 
       - name: Upload ZAP HTML Report
         uses: actions/upload-artifact@v4  
         with:
-          name: zap_scan_html_${{ github.run_id }}  # Unique artifact name
-          path: zap_reports/zap_scan_${{ github.run_id }}.html  # Correct path
+          name: "${{ env.REPORT_NAME }}"
+          path: "zap_reports/${{ env.REPORT_NAME }}"
 
       - name: List Saved Reports (Debugging)
         run: ls -lh zap_reports/
 
       - name: Print Success Message
-        run: echo "ZAP scan completed. The report is saved and uploaded as an artifact."
+        run: echo "ZAP scan completed. The report is saved as ${{ env.REPORT_NAME }} and uploaded as an artifact."
