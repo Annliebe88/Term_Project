@@ -23,36 +23,30 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup SSH Key for AWS Lightsail
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.LIGHTSAIL_PRIVATE_KEY }}  # Store this in GitHub Secrets
+      - name: Install OWASP ZAP
         run: |
-          echo "$SSH_PRIVATE_KEY" > LightsailDefaultKey-us-east-1.pem
-          chmod 600 LightsailDefaultKey-us-east-1.pem
+          sudo apt update
+          sudo apt install -y zaproxy
 
-      - name: Run ZAP Scan on AWS Ubuntu Instance
+      - name: Create Directory for Reports
+        run: mkdir -p zap_reports
+
+      - name: Run OWASP ZAP Scan
         run: |
-          ssh -o StrictHostKeyChecking=no -i LightsailDefaultKey-us-east-1.pem ubuntu@3.80.13.217 << 'EOF'
-            mkdir -p ~/zap_reports
-            REPORT_NAME="zap_report_$(date +%Y%m%d%H%M%S).html"
-            cd ~/ZAP_2.16.0/
-            ./zap.sh -cmd -quickurl "http://3.80.13.217/DVWA" -quickprogress -r ~/zap_reports/$REPORT_NAME
-            echo "REPORT_NAME=$REPORT_NAME" >> ~/.bashrc
-          EOF
+          REPORT_NAME="zap_report_$(date +%Y%m%d%H%M%S).html"
+          zap.sh -cmd -quickurl "http://3.80.13.217/DVWA" -quickprogress -r "zap_reports/$REPORT_NAME"
+          echo "REPORT_NAME=$REPORT_NAME" >> $GITHUB_ENV
 
-      - name: Copy ZAP Scan Report from AWS to GitHub Actions
-        run: |
-          scp -o StrictHostKeyChecking=no -i LightsailDefaultKey-us-east-1.pem ubuntu@3.80.13.217:~/zap_reports/zap_report_*.html zap_reports/
-
-      - name: Upload ZAP HTML Report to GitHub Artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload ZAP HTML Report
+        uses: actions/upload-artifact@v4  
         with:
-          name: zap_scan_html_report
-          path: zap_reports/
+          name: zap_scan_html_${{ env.REPORT_NAME }}
+          path: zap_reports/${{ env.REPORT_NAME }}
 
-      - name: Cleanup SSH Key (Security Best Practice)
-        run: rm -f LightsailDefaultKey-us-east-1.pem
+      - name: List Saved Reports (Debugging)
+        run: ls -lh zap_reports/
 
       - name: Print Success Message
-        run: echo "ZAP scan completed. The report is saved in AWS and uploaded as an artifact."
+        run: echo "ZAP scan completed. The report is saved as ${{ env.REPORT_NAME }} and uploaded as an artifact."
+
 
