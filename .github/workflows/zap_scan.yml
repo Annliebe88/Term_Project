@@ -1,4 +1,4 @@
-name: OWASP ZAP Automated Security Scan
+name: OWASP ZAP 2.16.0 Automated Security Scan
 on:
   push:
     branches:
@@ -13,7 +13,7 @@ permissions:
   contents: read
   security-events: write
 jobs:
-  zap_scan:
+  zap-security-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -24,8 +24,9 @@ jobs:
         with:
           target: 'http://3.80.13.217/DVWA'
           allow_issue_writing: false
-          cmd_options: '-a -j -T 15 -z "-config zap.core.version=2.16.0"'
+          cmd_options: '-a -j -T 15'
           fail_action: false
+          rules_file_name: '.zap/rules.tsv'
           
       - name: Format Date for Report Name
         id: date
@@ -102,9 +103,9 @@ jobs:
           echo "</body>" >> security-reports/index.html
           echo "</html>" >> security-reports/index.html
       
-      - name: Upload Reports as Artifacts
+      - name: Upload Security Reports Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: zap-security-reports-${{ steps.date.outputs.report_date }}
+          name: security-reports
           path: security-reports/
           retention-days: 90
