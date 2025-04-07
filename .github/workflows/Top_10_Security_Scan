@@ -1,0 +1,133 @@
+name: OWASP Top 10 Security Scan
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '0 4 * * 1' # Runs every Monday at 4 AM UTC (different time than other scans)
+  workflow_dispatch: # Allow manual triggering
+
+permissions:
+  issues: write
+  contents: read
+  security-events: write
+
+jobs:
+  owasp-top10-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: Run ZAP OWASP Top 10 Scan
+        uses: zaproxy/action-full-scan@v0.8.0
+        with:
+          target: 'http://3.80.13.217/DVWA'
+          allow_issue_writing: false
+          cmd_options: '-a -j -T 30 -c owasp_top10_2021.conf'
+          fail_action: false
+          
+      - name: Format Date for Report Name
+        id: date
+        run: echo "report_date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+        
+      - name: Create Reports Directory
+        run: |
+          mkdir -p owasp-top10-reports
+          
+          # Find and copy the HTML report
+          if [ -f "zap-full-scan.html" ]; then
+            cp zap-full-scan.html "owasp-top10-reports/owasp-top10-report-${{ steps.date.outputs.report_date }}.html"
+          else
+            echo "HTML report not found, searching for other HTML files..."
+            find . -name "*.html" -exec cp {} "owasp-top10-reports/owasp-top10-report-${{ steps.date.outputs.report_date }}.html" \; -quit
+          fi
+          
+          # Find and copy the Markdown report  
+          if [ -f "zap-full-scan.md" ]; then
+            cp zap-full-scan.md "owasp-top10-reports/owasp-top10-report-${{ steps.date.outputs.report_date }}.md"
+          else
+            echo "Markdown report not found, creating one from HTML..."
+            echo "# OWASP Top 10 Scan Report (${{ steps.date.outputs.report_date }})" > "owasp-top10-reports/owasp-top10-report-${{ steps.date.outputs.report_date }}.md"
+            echo "Please refer to the HTML report for complete details." >> "owasp-top10-reports/owasp-top10-report-${{ steps.date.outputs.report_date }}.md"
+          fi
+          
+          # Find and copy the JSON report
+          if [ -f "zap-full-scan.json" ]; then
+            cp zap-full-scan.json "owasp-top10-reports/owasp-top10-report-${{ steps.date.outputs.report_date }}.json"
+          else
+            echo "JSON report not found, searching for other JSON files..."
+            find . -name "*.json" -exec cp {} "owasp-top10-reports/owasp-top10-report-${{ steps.date.outputs.report_date }}.json" \; -quit
+          fi
+          
+      - name: Create Index HTML
+        run: |
+          echo "<!DOCTYPE html>" > owasp-top10-reports/index.html
+          echo "<html lang='en'>" >> owasp-top10-reports/index.html
+          echo "<head>" >> owasp-top10-reports/index.html
+          echo "  <meta charset='UTF-8'>" >> owasp-top10-reports/index.html
+          echo "  <meta name='viewport' content='width=device-width, initial-scale=1.0'>" >> owasp-top10-reports/index.html
+          echo "  <title>OWASP Top 10 Security Reports</title>" >> owasp-top10-reports/index.html
+          echo "  <style>" >> owasp-top10-reports/index.html
+          echo "    body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }" >> owasp-top10-reports/index.html
+          echo "    h1 { color: #333; }" >> owasp-top10-reports/index.html
+          echo "    h2 { color: #444; margin-top: 30px; }" >> owasp-top10-reports/index.html
+          echo "    .report-container { max-width: 800px; margin: 0 auto; }" >> owasp-top10-reports/index.html
+          echo "    .report-link { display: block; margin: 10px 0; padding: 10px; background-color: #f5f5f5; border-radius: 5px; text-decoration: none; color: #333; }" >> owasp-top10-reports/index.html
+          echo "    .report-link:hover { background-color: #e0e0e0; }" >> owasp-top10-reports/index.html
+          echo "    .target-info { background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0; }" >> owasp-top10-reports/index.html
+          echo "    .owasp-top10 { background-color: #f0f7ff; padding: 15px; border-radius: 5px; margin: 20px 0; }" >> owasp-top10-reports/index.html
+          echo "    .owasp-top10 h3 { color: #0056b3; margin-top: 0; }" >> owasp-top10-reports/index.html
+          echo "    .owasp-top10 ul { padding-left: 20px; }" >> owasp-top10-reports/index.html
+          echo "    .owasp-top10 li { margin-bottom: 8px; }" >> owasp-top10-reports/index.html
+          echo "    .version-info { color: #666; font-style: italic; margin-top: 20px; }" >> owasp-top10-reports/index.html
+          echo "  </style>" >> owasp-top10-reports/index.html
+          echo "</head>" >> owasp-top10-reports/index.html
+          echo "<body>" >> owasp-top10-reports/index.html
+          echo "  <div class='report-container'>" >> owasp-top10-reports/index.html
+          echo "    <h1>OWASP Top 10 Security Scan Reports</h1>" >> owasp-top10-reports/index.html
+          echo "    <p>Latest scan completed on: ${{ steps.date.outputs.report_date }}</p>" >> owasp-top10-reports/index.html
+          
+          echo "    <div class='owasp-top10'>" >> owasp-top10-reports/index.html
+          echo "      <h3>OWASP Top 10 (2021)</h3>" >> owasp-top10-reports/index.html
+          echo "      <ul>" >> owasp-top10-reports/index.html
+          echo "        <li><strong>A01:2021 – Broken Access Control</strong></li>" >> owasp-top10-reports/index.html
+          echo "        <li><strong>A02:2021 – Cryptographic Failures</strong></li>" >> owasp-top10-reports/index.html
+          echo "        <li><strong>A03:2021 – Injection</strong></li>" >> owasp-top10-reports/index.html
+          echo "        <li><strong>A04:2021 – Insecure Design</strong></li>" >> owasp-top10-reports/index.html
+          echo "        <li><strong>A05:2021 – Security Misconfiguration</strong></li>" >> owasp-top10-reports/index.html
+          echo "        <li><strong>A06:2021 – Vulnerable and Outdated Components</strong></li>" >> owasp-top10-reports/index.html
+          echo "        <li><strong>A07:2021 – Identification and Authentication Failures</strong></li>" >> owasp-top10-reports/index.html
+          echo "        <li><strong>A08:2021 – Software and Data Integrity Failures</strong></li>" >> owasp-top10-reports/index.html
+          echo "        <li><strong>A09:2021 – Security Logging and Monitoring Failures</strong></li>" >> owasp-top10-reports/index.html
+          echo "        <li><strong>A10:2021 – Server-Side Request Forgery</strong></li>" >> owasp-top10-reports/index.html
+          echo "      </ul>" >> owasp-top10-reports/index.html
+          echo "    </div>" >> owasp-top10-reports/index.html
+          
+          echo "    <div class='target-info'>" >> owasp-top10-reports/index.html
+          echo "      <h3>Target Information:</h3>" >> owasp-top10-reports/index.html
+          echo "      <p><strong>IP Address:</strong> 3.80.13.217</p>" >> owasp-top10-reports/index.html
+          echo "      <p><strong>IPv6:</strong> 2600:1f10:464e:5500:d80c:150a:1680:fb44</p>" >> owasp-top10-reports/index.html
+          echo "      <p><strong>Server:</strong> Ubuntu 22.04 LTS</p>" >> owasp-top10-reports/index.html
+          echo "      <p><strong>Location:</strong> Virginia, Zone A</p>" >> owasp-top10-reports/index.html
+          echo "      <p><strong>Resources:</strong> 8 GB RAM, 2 vCPUs, 160 GB SSD</p>" >> owasp-top10-reports/index.html
+          echo "      <p class='version-info'><strong>ZAP Version:</strong> 2.16.0</p>" >> owasp-top10-reports/index.html
+          echo "    </div>" >> owasp-top10-reports/index.html
+          
+          echo "    <h2>Available Reports:</h2>" >> owasp-top10-reports/index.html
+          echo "    <a class='report-link' href='owasp-top10-report-${{ steps.date.outputs.report_date }}.html'>HTML Report (${{ steps.date.outputs.report_date }})</a>" >> owasp-top10-reports/index.html
+          echo "    <a class='report-link' href='owasp-top10-report-${{ steps.date.outputs.report_date }}.md'>Markdown Report (${{ steps.date.outputs.report_date }})</a>" >> owasp-top10-reports/index.html
+          echo "    <a class='report-link' href='owasp-top10-report-${{ steps.date.outputs.report_date }}.json'>JSON Report (${{ steps.date.outputs.report_date }})</a>" >> owasp-top10-reports/index.html
+          echo "  </div>" >> owasp-top10-reports/index.html
+          echo "</body>" >> owasp-top10-reports/index.html
+          echo "</html>" >> owasp-top10-reports/index.html
+      
+      - name: Upload OWASP Top 10 Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: owasp-top10-reports
+          path: owasp-top10-reports/
+          retention-days: 90
