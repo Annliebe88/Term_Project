@@ -1,4 +1,5 @@
 name: OWASP ZAP 2.16.0 Automated Security Scan
+
 on:
   push:
     branches:
@@ -8,13 +9,16 @@ on:
       - main
   schedule:
     - cron: '0 3 * * 1' # Runs every Monday at 3 AM UTC
+
 permissions:
   issues: write
   contents: read
   security-events: write
+
 jobs:
-  zap-security-scan:
+  security-analysis:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -103,7 +107,7 @@ jobs:
           echo "</body>" >> security-reports/index.html
           echo "</html>" >> security-reports/index.html
       
-      - name: Upload Security Reports Artifact
+      - name: Upload Scan Reports
         uses: actions/upload-artifact@v4
         with:
           name: security-reports
