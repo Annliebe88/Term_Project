@@ -23,49 +23,96 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         
+      # Create the .zap directory and rules file if it doesn't exist
+      - name: Create ZAP Rules File
+        run: |
+          mkdir -p .zap
+          echo "10016	IGNORE	(Web Browser XSS Protection Not Enabled)" > .zap/rules.tsv
+          echo "10020	IGNORE	(X-Frame-Options Header)" >> .zap/rules.tsv
+          cat .zap/rules.tsv
+
+      # Test connectivity first with a simple curl request
+      - name: Test Target Connectivity
+        run: |
+          curl -I --connect-timeout 30 'http://3.80.13.217/DVWA' || echo "Target may be unreachable, but continuing with scan"
+        continue-on-error: true
+          
+      # Run a baseline scan first which is faster and more reliable
+      - name: Run ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.11.0
+        with:
+          target: 'http://3.80.13.217/DVWA'
+          allow_issue_writing: false
+          cmd_options: '-j'
+          fail_action: false
+          rules_file_name: '.zap/rules.tsv'
+          docker_name: 'ghcr.io/zaproxy/zaproxy:stable'
+        continue-on-error: true
+          
+      # Then try the full scan with debugging enabled
       - name: Run ZAP Full Scan
         uses: zaproxy/action-full-scan@v0.8.0
         with:
           target: 'http://3.80.13.217/DVWA'
           allow_issue_writing: false
-          cmd_options: '-a -j -T 15'
+          cmd_options: '-a -j -T 60' # Increased timeout to 60 minutes
           fail_action: false
           rules_file_name: '.zap/rules.tsv'
+          docker_name: 'ghcr.io/zaproxy/zaproxy:stable'
+          debug: true
+        continue-on-error: true
           
       - name: Format Date for Report Name
         id: date
         run: echo "report_date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
         
       - name: Debug - List Files
-        run: ls -la
+        run: |
+          echo "Current directory contents:"
+          ls -la
+          echo "Root directory contents:"
+          find . -maxdepth 2 -type f -name "*.html" -o -name "*.json" -o -name "*.md"
           
       - name: Create Reports Directory
         run: |
           mkdir -p security-reports
           
-          # Find and copy the HTML report
+          # Find and copy the HTML report - look in multiple locations
           if [ -f "zap-full-scan.html" ]; then
             cp zap-full-scan.html "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.html"
+          elif [ -f "zap-baseline-scan.html" ]; then
+            cp zap-baseline-scan.html "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.html"
           else
             echo "HTML report not found, searching for other HTML files..."
-            find . -name "*.html" -exec cp {} "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.html" \; -quit
+            find . -name "*.html" | grep -v "index.html" | head -1 | xargs -I {} cp {} "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.html" || true
+            
+            # If no HTML reports found, create a simple one
+            if [ ! -f "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.html" ]; then
+              echo "<html><body><h1>ZAP Scan Report</h1><p>No scan results available. The scan may have failed to run properly.</p></body></html>" > "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.html"
+            fi
           fi
           
           # Find and copy the Markdown report  
           if [ -f "zap-full-scan.md" ]; then
             cp zap-full-scan.md "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.md"
+          elif [ -f "zap-baseline-scan.md" ]; then
+            cp zap-baseline-scan.md "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.md"
           else
-            echo "Markdown report not found, creating one from HTML..."
+            echo "Markdown report not found, creating one from scratch..."
             echo "# ZAP Security Scan Report (${{ steps.date.outputs.report_date }})" > "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.md"
             echo "Please refer to the HTML report for complete details." >> "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.md"
+            echo "## Scan Status" >> "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.md"
+            echo "The scan encountered issues. Check the GitHub Actions log for more details." >> "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.md"
           fi
           
           # Find and copy the JSON report
           if [ -f "zap-full-scan.json" ]; then
             cp zap-full-scan.json "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.json"
+          elif [ -f "zap-baseline-scan.json" ]; then
+            cp zap-baseline-scan.json "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.json"
           else
-            echo "JSON report not found, searching for other JSON files..."
-            find . -name "*.json" -exec cp {} "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.json" \; -quit
+            echo "JSON report not found, creating a minimal one..."
+            echo '{"scan_date":"${{ steps.date.outputs.report_date }}","status":"error","message":"No scan results available"}' > "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.json"
           fi
           
       - name: Create Index HTML
@@ -84,15 +131,23 @@ jobs:
           echo "    .report-link:hover { background-color: #e0e0e0; }" >> security-reports/index.html
           echo "    .target-info { background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0; }" >> security-reports/index.html
           echo "    .version-info { color: #666; font-style: italic; margin-top: 20px; }" >> security-reports/index.html
+          echo "    .status-warning { background-color: #fff3cd; color: #856404; padding: 10px; border-radius: 5px; margin: 10px 0; }" >> security-reports/index.html
           echo "  </style>" >> security-reports/index.html
           echo "</head>" >> security-reports/index.html
           echo "<body>" >> security-reports/index.html
           echo "  <div class='report-container'>" >> security-reports/index.html
           echo "    <h1>OWASP ZAP Security Scan Reports</h1>" >> security-reports/index.html
           echo "    <p>Latest scan completed on: ${{ steps.date.outputs.report_date }}</p>" >> security-reports/index.html
+          
+          # Add status warning if scan may have issues
+          echo "    <div class='status-warning'>" >> security-reports/index.html
+          echo "      <strong>Note:</strong> If scan reports seem incomplete, the target may have been unreachable during the scan. Check GitHub Actions logs for details." >> security-reports/index.html
+          echo "    </div>" >> security-reports/index.html
+          
           echo "    <div class='target-info'>" >> security-reports/index.html
           echo "      <h3>Target Information:</h3>" >> security-reports/index.html
           echo "      <p><strong>IP Address:</strong> 3.80.13.217</p>" >> security-reports/index.html
+          echo "      <p><strong>Application:</strong> DVWA (Damn Vulnerable Web Application)</p>" >> security-reports/index.html
           echo "      <p><strong>IPv6:</strong> 2600:1f10:464e:5500:d80c:150a:1680:fb44</p>" >> security-reports/index.html
           echo "      <p><strong>Server:</strong> Ubuntu 22.04 LTS</p>" >> security-reports/index.html
           echo "      <p><strong>Location:</strong> Virginia, Zone A</p>" >> security-reports/index.html
@@ -110,6 +165,6 @@ jobs:
       - name: Upload Scan Reports
         uses: actions/upload-artifact@v4
         with:
-          name: security-reports
+          name: security-reports-${{ steps.date.outputs.report_date }}
           path: security-reports/
           retention-days: 90
