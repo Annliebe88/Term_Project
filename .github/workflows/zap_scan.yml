@@ -1,5 +1,4 @@
 name: OWASP ZAP Automated Security Scan
-
 on:
   push:
     branches:
@@ -9,44 +8,78 @@ on:
       - main
   schedule:
     - cron: '0 3 * * 1' # Runs every Monday at 3 AM UTC
-
 permissions:
   issues: write
   contents: read
-  security-events: write  # Required for uploading security reports
-
+  security-events: write
+  pages: write      # For GitHub Pages deployment
+  id-token: write   # Required for GitHub Pages deployment
 jobs:
   zap_scan:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: Install OWASP ZAP
-        run: |
-          sudo apt update
-          sudo apt install -y zaproxy
-
-      - name: Create Directory for Reports
-        run: mkdir -p zap_reports
-
-      - name: Run OWASP ZAP Scan
-        run: |
-          REPORT_NAME="zap_report_$(date +%Y%m%d%H%M%S).html"
-          zap.sh -cmd -quickurl "http://3.80.13.217/DVWA" -quickprogress -r "zap_reports/$REPORT_NAME"
-          echo "REPORT_NAME=$REPORT_NAME" >> $GITHUB_ENV
-
-      - name: Upload ZAP HTML Report
-        uses: actions/upload-artifact@v4  
+        
+      - name: Run ZAP Full Scan
+        uses: zaproxy/action-full-scan@v0.8.0
         with:
-          name: zap_scan_html_${{ env.REPORT_NAME }}
-          path: zap_reports/${{ env.REPORT_NAME }}
-
-      - name: List Saved Reports (Debugging)
-        run: ls -lh zap_reports/
-
-      - name: Print Success Message
-        run: echo "ZAP scan completed. The report is saved as ${{ env.REPORT_NAME }} and uploaded as an artifact."
-
-
+          target: 'http://3.80.13.217/DVWA'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a -j'
+          allow_issue_writing: false
+          
+      - name: Create Reports Directory
+        run: mkdir -p security-reports
+          
+      - name: Format Date for Report Name
+        id: date
+        run: echo "report_date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+        
+      - name: Copy and Rename Reports
+        run: |
+          cp zap-full-scan.html "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.html"
+          cp zap-full-scan.md "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.md"
+          cp zap-full-scan.json "security-reports/zap-scan-report-${{ steps.date.outputs.report_date }}.json"
+          
+          # Create an index file that links to all reports
+          echo "# OWASP ZAP Security Scan Reports" > security-reports/index.html
+          echo "<h1>OWASP ZAP Security Scan Reports</h1>" >> security-reports/index.html
+          echo "<p>Latest scan: ${{ steps.date.outputs.report_date }}</p>" >> security-reports/index.html
+          echo "<ul>" >> security-reports/index.html
+          echo "<li><a href='zap-scan-report-${{ steps.date.outputs.report_date }}.html'>Latest HTML Report (${{ steps.date.outputs.report_date }})</a></li>" >> security-reports/index.html
+          echo "<li><a href='zap-scan-report-${{ steps.date.outputs.report_date }}.md'>Latest Markdown Report (${{ steps.date.outputs.report_date }})</a></li>" >> security-reports/index.html
+          echo "<li><a href='zap-scan-report-${{ steps.date.outputs.report_date }}.json'>Latest JSON Report (${{ steps.date.outputs.report_date }})</a></li>" >> security-reports/index.html
+          echo "</ul>" >> security-reports/index.html
+      
+      - name: Upload Reports as Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-${{ steps.date.outputs.report_date }}
+          path: security-reports/
+          retention-days: 90
+          
+      # Optional: Configure GitHub Pages for persistent report hosting
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+        
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'security-reports'
+          
+  # Optional: Deploy reports to GitHub Pages
+  deploy:
+    needs: zap_scan
+    # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
+    permissions:
+      pages: write      # to deploy to Pages
+      id-token: write   # to verify the deployment originates from an appropriate source
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
