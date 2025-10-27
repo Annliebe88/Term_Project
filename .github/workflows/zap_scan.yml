@@ -163,7 +163,7 @@ jobs:
           echo "</html>" >> security-reports/index.html
       
       - name: Upload Scan Reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: security-reports-${{ steps.date.outputs.report_date }}
           path: security-reports/
