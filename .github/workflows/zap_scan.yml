@@ -21,7 +21,7 @@ jobs:
     
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         
       # Create the .zap directory and rules file if it doesn't exist
       - name: Create ZAP Rules File
